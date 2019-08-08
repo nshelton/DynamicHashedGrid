@@ -1,0 +1,94 @@
+﻿#pragma kernel Integrate
+#pragma kernel BufferToGrid
+#pragma kernel SortBuffer
+
+ // Particle's data
+struct Particle
+{
+    float3 position;
+    float3 velocity;
+};
+
+// Particle's data, shared with the shader
+RWStructuredBuffer<Particle> _particleBuffer;
+
+// Variables set from the CPU
+float _deltaTime;
+float2 _mousePosition;
+
+////////////Some Random stuff////////////////////////// 
+uint rng_state;
+float nrand(float2 uv)
+{
+    return frac(sin(dot(uv, float2(12.9898, 78.233))) * 43758.5453);
+}
+uint rand_xorshift()
+{
+	// Xorshift algorithm from George Marsaglia's paper
+    rng_state ^= (rng_state << 13);
+    rng_state ^= (rng_state >> 17);
+    rng_state ^= (rng_state << 5);
+    return rng_state;
+} 
+float3 RandomVector(int seed)
+{
+    rng_state = seed;
+    float f0 = float(rand_xorshift()) * (1.0 / 4294967296.0) - 0.5;
+    float f1 = float(rand_xorshift()) * (1.0 / 4294967296.0) - 0.5;
+    float f2 = float(rand_xorshift()) * (1.0 / 4294967296.0) - 0.5;
+    float3 normalF3 = normalize(float3(f0, f1, f2)) * 0.8f;
+    normalF3 *= float(rand_xorshift()) * (1.0 / 4294967296.0);
+
+    return float3(normalF3.x, normalF3.y, normalF3.z + 3.0);
+}
+
+
+[numthreads(256, 1, 1)]
+void Integrate(uint3 id : SV_DispatchThreadID)
+{ 
+    float3 delta = float3(_mousePosition.xy, 3) - _particleBuffer[id.x].position;
+    float distancesq = dot(delta, delta);
+    distancesq = max(0.01, distancesq);
+
+    _particleBuffer[id.x].velocity += delta * _deltaTime * 50 / distancesq;
+
+    _particleBuffer[id.x].velocity *= 0.99;
+    _particleBuffer[id.x].position += _particleBuffer[id.x].velocity * _deltaTime;
+}
+
+ 
+[numthreads(256, 1, 1)]
+void BufferToGrid(uint3 id : SV_DispatchThreadID)
+{
+
+}
+
+// based on https://github.com/nobnak/GPUMergeSortForUnity
+
+RWStructuredBuffer<int> _intBuffer;
+RWStructuredBuffer<int> _sortedIndexBuffer;
+int _block;
+int _count;
+int _dim;
+
+[numthreads(256, 1, 1)]
+void SortBuffer(uint3 id : SV_DispatchThreadID)
+{
+    uint i = id.x;
+    uint j = i ^ _block;
+	
+    if (j < i || i >= _count) 
+        return;
+
+    uint key_i = _sortedIndexBuffer[i];
+    uint key_j = _sortedIndexBuffer[j];
+    int value_i = _intBuffer[key_i];
+    int value_j = _intBuffer[key_j];
+	
+    int diff = (value_i - value_j) * ((i & _dim) == 0 ? 1 : -1);
+    if (diff > 0)
+    {
+        _sortedIndexBuffer[i] = key_j;
+        _sortedIndexBuffer[j] = key_i;
+    }
+}
