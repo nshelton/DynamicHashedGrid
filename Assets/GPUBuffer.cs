@@ -20,8 +20,7 @@ public class GPUBuffer<T> : System.IDisposable
     #region IDisposable implementation
     public void Dispose()
     {
-        if (Buffer != null)
-            Buffer.Dispose();
+        Buffer?.Dispose();
     }
     #endregion
 }
